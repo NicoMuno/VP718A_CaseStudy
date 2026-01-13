@@ -33,8 +33,34 @@ pip install -r requirements.txt
 python main.py
 ```
 
-## Features & Controlls
-...
+## Modes & Controlls
+
+| Modes     | Key | Description        |
+|-----------|-----|---------------------------------------------|
+| CAMERA    | C   | use the camera to move around in simulation | 
+| ROBOT     | R   | cycle through Robots |
+| HUMAN     | H   | cycle through Humans |
+
+*Note - When switchen from ROBOT to HUMAN/CAMERA:*
+- Replay keeps going
+- Recording is paused
+- Manual Control is stopped (Sleep)
+
+### Camera Conntrols
+
+| Key               | Action       |
+|-------------------|--------------|
+| Arrow Keys        | Pan camera (when not following a robot)  | 
+| PageUp / PageDown | Zoom in / out |
+| O / P             | Rotate camera yaw  |
+| U / I             | Rotate camera pitch      |
+
+### Human Controls
+
+| Key      | Action      |
+|----------|-------------|
+| W/A/S/D  | Move around |
+| H        | Cycle through humans |
 
 
 ### Robot Controls
@@ -46,21 +72,13 @@ python main.py
 | R         | Cycle through robots (select next robot) |
 | 1         | Record Task  |
 | 2         | Do Task      |
+| F         | Toggle camera follow mode (follows selected robot)|
 
-### Camera Conntrols
 
-| Key               | Action       |
-|-------------------|--------------|
-| Arrow Keys        | Pan camera (when not following a robot)  | 
-| PageUp / PageDown | Zoom in / out |
-| O / P             | Rotate camera yaw  |
-| U / I             | Rotate camera pitch      |
-| F                 | Toggle camera follow mode (follows selected robot)|
-
-### Color Coding of Robot
-|Condition	      |Color         |
-|-----------------|--------------|
-Recording         |	Red |
-Replaying         | Green |
-Selected (manual) |	Yellow |
-Sleeping / Not selected	| Blue |
+**Color Coding of Robot:**
+|Condition	       | Color        |
+|------------------|--------------|
+|Recording         | Red          |
+|Replaying         | Green        |
+|Selected (manual) | Yellow       |
+|Sleeping / Not selected | Blue |
