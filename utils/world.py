@@ -32,6 +32,8 @@ def get_right_vector(yaw,pitch):
 class BaseWorld:
     def __init__(self):
         print("PyBullet Version ",p.getAPIVersion())
+        
+        p.setTimeStep(1./240.)
         # Connect to the physics server
         self.client = p.connect(p.GUI,options="--disable_timer --disable_file_caching")  # Use p.DIRECT for headless mode
         
@@ -233,5 +235,4 @@ class BaseWorld:
         time.sleep(1./240.)  # 240 Hz
 
     def end(self):
-        self.client.disconnect()
-        p.disconnect()
+        p.disconnect(self.client)

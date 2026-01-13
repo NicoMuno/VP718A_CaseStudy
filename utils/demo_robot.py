@@ -4,9 +4,6 @@ import os
 
 from utils.enums import State, Motion
 
-# color = [1.0, 0.0, 0.0, 1.0]  # bright red
-# color = [0.0, 1.0, 0.0, 1.0]  # green
-
 class DemoRobot:
     def __init__(self,x=0,y=0):
         body_length = 1.2
