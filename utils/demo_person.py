@@ -1,92 +1,114 @@
 import pybullet as p
 import os
-import random
-
-class ValidPathGraph():
-    def __init__(self):
-        self.nodes=set()
-        self.connections={}
-    
-    def add_position(self,x,y):
-        self.nodes.add((x,y))
-
-    def add_positions(self,xs):
-        for x in xs:
-            self.add_position(x[0],x[1])
-        return self
-    
-    def add_connection(self,p1,p2):
-        if p1 in self.nodes and p2 in self.nodes:
-            if p1 not in self.connections:
-                self.connections[p1]=[]
-            if p2 not in self.connections:
-                self.connections[p2]=[]
-            self.connections[p1].append(p2)
-            self.connections[p2].append(p1)    
-
-    def random_target_from(self,x):
-        print(self.connections)
-        return random.sample(self.connections[x],1)[0]
 
 class DemoPerson:
-    def __init__(self,x=0,y=0):
+    def __init__(self, x=0, y=0):
         urdf_path = os.path.abspath("models/bubbleperson.urdf")
-        self.objectId = p.loadURDF(urdf_path,[x,y,0])
+
+        self.z_ground = 0.75
+        self.objectId = p.loadURDF(urdf_path, [x, y, self.z_ground])
         self.new_orn = p.getQuaternionFromEuler([0, 0, 0])
 
-        self.collidable=set()
-
-        self.collision_callback=None
-        self.movements=None
-        self.speed=0.2
-
-        self.current_location=(25,0)
-        self.active_steps=[]
-
-    def set_movement_graph(self,g):
-        self.movements=g
-        x=random.sample(list(self.movements.nodes),1)[0]
-        self.set_position(x[0],x[1])
-        # pick an initial location?
-
-    def set_position(self,x,y):
-        p.resetBasePositionAndOrientation(self.objectId, [x,y,0], self.new_orn)
-        self.current_location=(x,y)
-
-    def set_collision_callback(self,f):
-        self.collision_callback=f
-
-    def add_collidable(self,new_id):
-        self.collidable.add(new_id)
-        p.setCollisionFilterPair(new_id, self.objectId, -1, -1, enableCollision=0)
-
-    def pick_new_path(self):
-        targ=self.movements.random_target_from(self.current_location)
-        dx=targ[0]-self.current_location[0]
-        dy=targ[1]-self.current_location[1]
-        dist=(dx*dx+dy*dy)**0.5 
-        steps =int(dist/self.speed)
-        self.active_steps=[ (self.current_location[0]+(float(i)/steps)*dx,self.current_location[1]+(float(i)/steps)*dy)      for i in range(1,steps)               ]
-        self.active_steps.append(targ)
-        self.active_steps.reverse()
+        p.changeDynamics(self.objectId, -1, mass=0)
         
-    def update_position(self):
-        if len(self.active_steps)==0:
-            self.pick_new_path()
-        else:
-            (x,y)=self.active_steps.pop()
-            self.set_position(x,y)
+        self.enabled = True
+        self.selected = False
+        self._keys = {}
+        self.speed = 0.05  # meters per physics step (simple)
+
+        self.movements = None  # graph-based autopilot (optional)
+
+        self.current_location = (x, y)
+        self.active_steps = []
+        self.collidable = set()
+        self.collision_callback = None
 
     def step_action(self):
-        """Overwrite this to change behaviour"""
+        if not self.enabled:
+            return
 
+        # collision check (unchanged)
         for o in self.collidable:
             contact_points = p.getContactPoints(bodyA=o, bodyB=self.objectId)
             if len(contact_points) > 0:
                 print("Collision detected!")
                 if self.collision_callback is not None:
                     self.collision_callback()
-        if self.movements is not None:
-            self.update_position()
+
+        # only attempt manual movement if selected
+        if self.selected:
+            self._manual_move()
+
+
+    def set_enabled(self, enabled: bool):
+        self.enabled = enabled
+        if not enabled:
+            self.selected = False
+            self._keys = {}
+
+    def set_user_keys(self, keys):
+        self._keys = keys
+
+    def set_selected(self, selected: bool):
+        self.selected = selected
+        if not selected:
+            self._keys = {}
          
-        
+    def set_collision_callback(self,f):
+        self.collision_callback=f
+
+    def add_collidable(self,new_id):
+        self.collidable.add(new_id)
+        # p.setCollisionFilterPair(new_id, self.objectId, -1, -1, enableCollision=1)
+
+#####################################################################################################
+## HELPER FUNCTIONS #################################################################################
+#####################################################################################################
+
+    def _manual_move(self):
+        """Very simple WASD movement (not physics-realistic)."""
+        if (not self.enabled) or (not self.selected):
+            return False
+
+        keys = self._keys
+        dx = 0.0
+        dy = 0.0
+
+        if ord('w') in keys and (keys[ord('w')] & p.KEY_IS_DOWN):
+            dy += self.speed
+        if ord('s') in keys and (keys[ord('s')] & p.KEY_IS_DOWN):
+            dy -= self.speed
+        if ord('a') in keys and (keys[ord('a')] & p.KEY_IS_DOWN):
+            dx -= self.speed
+        if ord('d') in keys and (keys[ord('d')] & p.KEY_IS_DOWN):
+            dx += self.speed
+
+        if dx == 0.0 and dy == 0.0:
+            return False
+
+        x, y = self.current_location
+        self._set_position(x + dx, y + dy)
+        return True
+
+    def _set_position(self, x, y):
+        old_pos, old_orn = p.getBasePositionAndOrientation(self.objectId)
+
+        # try new pose
+        p.resetBasePositionAndOrientation(self.objectId, [x, y, self.z_ground], self.new_orn)
+
+        # update collision info for the new pose
+        p.performCollisionDetection()
+
+        # if we hit any collidable, revert
+        for o in self.collidable:
+            if p.getContactPoints(bodyA=self.objectId, bodyB=o):
+                p.resetBasePositionAndOrientation(self.objectId, old_pos, old_orn)
+                p.resetBaseVelocity(self.objectId, [0, 0, 0], [0, 0, 0])
+                return False
+
+        # accept move
+        p.resetBaseVelocity(self.objectId, [0, 0, 0], [0, 0, 0])
+        self.current_location = (x, y)
+        return True
+
+

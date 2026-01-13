@@ -33,7 +33,6 @@ class BaseWorld:
     def __init__(self):
         print("PyBullet Version ",p.getAPIVersion())
         
-        p.setTimeStep(1./240.)
         # Connect to the physics server
         self.client = p.connect(p.GUI,options="--disable_timer --disable_file_caching")  # Use p.DIRECT for headless mode
         
@@ -42,6 +41,7 @@ class BaseWorld:
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
 
         # Set gravity
+        p.setTimeStep(1./240.)
         p.setGravity(0, 0, -9.81)
 
         p.configureDebugVisualizer(p.COV_ENABLE_GUI, 1)  # Enable GUI panels

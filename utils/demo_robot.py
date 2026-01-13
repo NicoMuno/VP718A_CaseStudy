@@ -2,169 +2,118 @@ import pybullet as p
 import math
 import os
 
-from utils.enums import State, Motion
+from utils.enums import State, Motion, ActionMode
 
 class DemoRobot:
     def __init__(self,x=0,y=0):
-        body_length = 1.2
-        body_width = 0.8
-        body_height = 0.3
-        wheel_radius = 0.15
-        wheel_width = 0.1
-
-        linearDamping = 0.2
-        angularDamping = 0.02
-        lateralFriction = 0.1
-        rollingFriction = 0.01
-        spinningFriction = 0.01
-
-        self.left_speed=0
-        self.right_speed=0
-
-        self.max_speed  = 15.0
-        self.max_force  = 50.0 
-
-        self.drive_mode = True
-        self.mode_change = False
-        self.state = State.MANUAL
-        self.motion = Motion.STOP
-        self.selected = False
-
-        # Create multi-body with wheels 
-        self.agv_id = self.build_robot(x,y,body_length,body_width,body_height,wheel_radius,wheel_width)
-        # Number of joints
+        # Create multi-body with wheels & init dynamics
+        # x,y,body_length,body_width,body_height,wheel_radius,wheel_width
+        self.agv_id = self._build_robot(x,y,1.2,0.8,0.3,0.15,0.1)
         self.num_joints = p.getNumJoints(self.agv_id)
         self.wheel_joints = list(range(self.num_joints))
         self.right_wheels = [0,2]
         self.left_wheels  = [1,3]
-        # Set Dynamics
-        self.set_dynamics(linearDamping,angularDamping,lateralFriction,rollingFriction,spinningFriction)
+        # linearDamping,angularDamping,lateralFriction,rollingFriction,spinningFriction
+        self._set_dynamics(0.2,0.02,0.1,0.01,0.01)
+
+        # Vehilce Config
+        self.left_speed=0
+        self.right_speed=0
+        self.max_speed  = 15.0
+        self.max_force  = 50.0 
+        self.state = State.SLEEP
+        self._last_action_mode = ActionMode.UNK
+
+        # vehilce currently selected
+        self.paused = False
+        self.human_connected = False
+        self.selected = False
+
+        # latest keys set in main
+        self._keys = {}
+
+        # Timing Controll
+        self.physics_dt = 1.0 / 240.0
+        self.control_hz = 50.0
+        self.control_dt = 1.0 / self.control_hz
+        self._control_accum = 0.0
 
         # Tasks
         self.task_path = f'tasks/robo_{self.agv_id}_task.txt' 
-        self.task_motions = []
+        self.task = []
         self.task_index = 0
         self.recording = False # in main key -> 1
         self.replaying = False # in main key -> 2
 
-        record_dir = os.path.dirname(self.task_path)
-        if record_dir:
-            os.makedirs(record_dir, exist_ok=True)
-        if os.path.exists(self.task_path):
-            print(f"[Robot:{self.agv_id}] Found existing recording: {self.task_path}")
+    def set_pause(self, pause: bool):
+        """
+        Pause behavior depends on current state:
+        - REPLAY  -> keep replaying (do not pause)
+        - RECORD  -> pause recording (freeze motion, keep state=RECORD, don't accumulate)
+        - MANUAL  -> go to SLEEP
+        """
+        self.paused = pause
+
+        if pause:
+            # Stop accepting keys when not in robot control mode
+            self._keys = {}
+
+            if self.state == State.REPLAY or self.replaying:
+                # Replaying does NOT stop
+                return
+
+            if self.state == State.RECORD or self.recording:
+                # Pause recording: freeze movement, keep state as RECORD, do NOT stop recording flag
+                self.left_speed = 0.0
+                self.right_speed = 0.0
+                return
+
+            # MANUAL -> sleep
+            self.state = State.SLEEP
+            self.left_speed = 0.0
+            self.right_speed = 0.0
+
         else:
-            print(f"[Robot:{self.agv_id}] No recording yet at: {self.task_path}")
+            # unpausing: if selected, wake to MANUAL (unless replay/record already active)
+            if self.selected and self.state == State.SLEEP:
+                self.state = State.MANUAL
 
 
-    def user_control(self, keys):
-        self.update_state_and_color()
+
+    def set_user_keys(self, keys):
+        """
+        keys set by main
+        """
+        self._keys = keys
+
+    def control_step(self, dt):
+        """
+        If paused:
+        - if replaying: still run control ticks (robot continues)
+        - else: freeze and return (record stays paused, manual sleeps)
+        """
+        if self.paused and not (self.state == State.REPLAY or self.replaying):
+            self.left_speed = 0.0
+            self.right_speed = 0.0
+            self._update_state_and_color()
+            return
+
+        # Normal path (including REPLAY while paused)
+        self._update_state_and_color()
+
         if self.state == State.SLEEP:
             self.left_speed = 0.0
             self.right_speed = 0.0
             return
-        
-        self.motion = Motion.STOP
-        left = 0.0
-        right = 0.0
-        drive = self.max_speed
-        turn = self.max_speed
 
-        if self.state in (State.MANUAL, State.RECORD):
-            w = (ord('w') in keys and keys[ord('w')] & p.KEY_IS_DOWN)
-            s = (ord('s') in keys and keys[ord('s')] & p.KEY_IS_DOWN)
-            a = (ord('a') in keys and keys[ord('a')] & p.KEY_IS_DOWN)
-            d = (ord('d') in keys and keys[ord('d')] & p.KEY_IS_DOWN)
-
-            if w: self.motion = Motion.STRAIGHT_FRONT
-            elif s: self.motion = Motion.STRAIGHT_BACK
-            elif a: self.motion = Motion.TURN_LEFT
-            elif d: self.motion = Motion.TURN_RIGHT
-            else: self.motion = Motion.STOP
-
-        # RECORDING TASK OF ROBOT (toggle handled in main)
-        if self.recording and self.state != State.RECORD:
-            # start recording
-            self.state = State.RECORD
-            self.task_motions = []
-            self.task_index = 0
-            print(f"[Robot:{self.agv_id}] RECORDING of task started.")
-        
-        if (not self.recording) and self.state == State.RECORD:
-            # stop recording
-            self.state = State.MANUAL
-            print(f"[Robot:{self.agv_id}] RECORDING stopped.")
-            self.save_task_to_file()
-        
-        if self.recording:
-            self.task_motions.append(self.motion)
-        
-
-
-        # REPLAYING TASK OF ROBOT
-        if self.replaying and self.state != State.REPLAY:
-            if self.load_task_from_file():
-                self.state = State.REPLAY
-                self.task_index = 0
-                print(f"[Robot:{self.agv_id}] Starting Task.")
-
-        # Get Motions from Task file
-        if self.state == State.REPLAY and self.replaying:
-            if self.task_index < len(self.task_motions):
-                self.motion = self.task_motions[self.task_index]
-                self.task_index += 1
-            else:
-                # finished replay -> stop and go back to manual
-                self.left_speed = 0.0
-                self.right_speed = 0.0
-                print(f"[Robot:{self.agv_id}] Task finished.")
-                self.state = State.MANUAL
-                self.replaying = False
-                self.task_index = 0
-
-        # Drive dynamics
-        if self.mode_change:
-            if self.drive_mode:
-                # linearDamping,angularDamping,lateralFriction,rollingFriction,spinningFriction
-                self.set_dynamics(0.15,0.2,2,0.02,0.005)
-                self.mode_change = False
-            else:
-                #Turn dynamcis
-                self.set_dynamics(0.1,0.03,0.6,0,0)
-                self.mode_change = False
-
-        if self.motion == Motion.STRAIGHT_FRONT or self.motion == Motion.STRAIGHT_BACK:
-            if not(self.drive_mode):
-                self.mode_change = True
-                self.drive_mode = True
-            if self.motion == Motion.STRAIGHT_FRONT:
-                left += drive
-                right += drive
-            if self.motion == Motion.STRAIGHT_BACK:
-                left -= drive
-                right -= drive
-        # Turn
-        if not (self.motion == Motion.STRAIGHT_FRONT or self.motion == Motion.STRAIGHT_BACK):
-            # spin in place
-            if(self.drive_mode):
-                self.mode_change = True
-                self.drive_mode=False
-            if self.motion == Motion.TURN_LEFT:
-                left += turn
-                right -= turn
-            elif self.motion == Motion.TURN_RIGHT:
-                left -= turn
-                right += turn
-
-        self.left_speed = left
-        self.right_speed = right
-
+        self._control_accum += dt
+        while self._control_accum >= self.control_dt:
+            self._control_accum -= self.control_dt
+            self._control_tick()
 
 
     def step_action(self):
         """Overwrite this to change behaviour"""
-        if self.state == State.SLEEP:
-            return
-
         # Left wheels
         for j in self.left_wheels:
             p.setJointMotorControl2(
@@ -184,16 +133,161 @@ class DemoRobot:
                 force=self.max_force
             )
 
-    def set_dynamics(self,ld,ad,lf,rf,sf):
+    def set_selected(self, selected: bool):
+        """
+        If Robot is selected -> wake up and update color
+        """
+        self.selected = selected
+        if selected and self.state == State.SLEEP:
+            self.state = State.MANUAL
+        self._update_state_and_color()
+
+#####################################################################################################
+## HELPER FUNCTIONS #################################################################################
+#####################################################################################################
+
+    def _control_tick(self):
+        # default
+        motion = Motion.STOP
+
+        # REPLAY
+        #-- Init
+        if self.replaying and self.state != State.REPLAY:
+            if self._load_task_from_file():
+                self.state = State.REPLAY
+                self._replay_index = 0
+                motion,self._replay_remaining = self.task[0]
+                # if self.paused:
+                #     motion=self._get_reversed_Motion(motion)
+                print(f"[Robot:{self.agv_id}] Starting Task.")
+            else:
+                self.replaying = False
+
+        ##-- currently replaying
+        if self.replaying and self.state == State.REPLAY:
+            # task finished
+            if self._replay_index >=len(self.task):
+                self._finish_replay()
+                motion = Motion.STOP
+            else:
+                motion, _ = self.task[self._replay_index]
+                self._replay_remaining -= self.control_dt
+                if self._replay_remaining <= 0.0:
+                    self._replay_index += 1
+                    if self._replay_index < len(self.task):
+                        _, self._replay_remaining = self.task[self._replay_index]
+                    else:
+                        self._finish_replay()
+        
+        # MANUAL/RECORD
+        else:       
+            if self.state in (State.MANUAL, State.RECORD):
+                keys = self._keys
+                w = (ord('w') in keys and keys[ord('w')] & p.KEY_IS_DOWN)
+                s = (ord('s') in keys and keys[ord('s')] & p.KEY_IS_DOWN)
+                a = (ord('a') in keys and keys[ord('a')] & p.KEY_IS_DOWN)
+                d = (ord('d') in keys and keys[ord('d')] & p.KEY_IS_DOWN)
+
+                if w: motion = Motion.STRAIGHT_FRONT
+                elif s: motion = Motion.STRAIGHT_BACK
+                elif a: motion = Motion.TURN_LEFT
+                elif d: motion = Motion.TURN_RIGHT
+                else: motion = Motion.STOP
+
+        
+        # Handle task recoding (toggle in main)
+        # --Init recording
+        if self.recording and self.state != State.RECORD:
+            self.state = State.RECORD
+            self.task = []
+            self._rec_last_motion = Motion.STOP
+            self._rec_run_time = 0.0
+            print(f"[Robot:{self.agv_id}] RECORDING of task started.")
+        
+        # -- finished recording (save task)
+        if (not self.recording) and self.state == State.RECORD:
+            # save task
+            self._flush_record_run()
+            self.state = State.MANUAL
+            print(f"[Robot:{self.agv_id}] RECORDING stopped.")
+            self._save_task_to_file()
+        
+        # -- save recording step
+        if self.state == State.RECORD and self.recording and (not self.paused):
+            if motion == self._rec_last_motion:
+                self._rec_run_time += self.control_dt
+            else:
+                self._flush_record_run()
+                self._rec_last_motion = motion
+                self._rec_run_time = self.control_dt
+
+        
+        self._apply_motion(motion)
+
+    def _apply_motion(self, motion: Motion):
+        drive = self.max_speed
+        new_mode = self._last_action_mode
+        left = 0.0
+        right = 0.0
+
+        if motion == Motion.STRAIGHT_FRONT or motion == Motion.STRAIGHT_BACK:
+            new_mode = ActionMode.DRIVE
+            if motion == Motion.STRAIGHT_FRONT:
+                left += drive
+                right += drive
+            if motion == Motion.STRAIGHT_BACK:
+                left -= drive
+                right -= drive
+        # Turn
+        if motion == Motion.TURN_LEFT or motion == Motion.TURN_RIGHT:
+            # spin in place
+            new_mode = ActionMode.TURN
+            if motion == Motion.TURN_LEFT:
+                left += drive
+                right -= drive
+            elif motion == Motion.TURN_RIGHT:
+                left -= drive
+                right += drive
+
+        # Drive dynamics
+        if new_mode != self._last_action_mode:
+            self._apply_dynamics_for(new_mode)
+            self._last_action_mode = new_mode
+        self.left_speed = left
+        self.right_speed = right
+
+    def _apply_dynamics_for(self,new_mode: ActionMode):
+        if new_mode == ActionMode.DRIVE:
+            print("STRAIGHT DRIVING DYNAMICS SET\n")
+            self._set_dynamics(0.15,0.2,2,0.02,0.005)
+        elif new_mode == ActionMode.TURN:
+            print("TURN DYNAMICS SET\n")
+            self._set_dynamics(0.1,0.03,0.6,0,0)
+        else:
+            print(f"ACTION MODE is {new_mode.name} - NOTHING CHANGED!")
+            
+
+    def _flush_record_run(self):
+        if self._rec_run_time > 0.0:
+            self.task.append((self._rec_last_motion, self._rec_run_time))
+            self._rec_run_time = 0.0
+    
+    def _finish_replay(self):
+        self.left_speed = 0.0
+        self.right_speed = 0.0
+        print(f"[Robot:{self.agv_id}] Task finished.")
+        self.state = State.SLEEP
+        self.replaying = False
+        self._replay_index = 0
+        self._replay_remaining = 0.0
+
+    def _set_dynamics(self,ld,ad,lf,rf,sf):
         # body damping
         p.changeDynamics(self.agv_id, 
                          -1,
                          linearDamping=ld, 
                          angularDamping=ad)
-        
-
-
-        
+               
         # Set wheel friction
         for joint_id in self.wheel_joints:
             p.setJointMotorControl2(
@@ -211,39 +305,55 @@ class DemoRobot:
                              )
 
 
-    def save_task_to_file(self):
+    def _save_task_to_file(self):
         """Save recorded Task to text file."""
-        if not self.task_motions:
+        if not self.task:
             print("Nothing to save. Task recording is empty!")
             return
         with open(self.task_path, "w") as f:
-            for s in self.task_motions:
-                f.write(s.name + "\n")
-        print(f"Saved {len(self.task_motions)} steps to {self.task_path}")
+            for motion, dur in self.task:
+                f.write(f"{motion.name} {dur:.3f}\n")
+        print(f"Saved {len(self.task)} segments to {self.task_path}")
 
-    def load_task_from_file(self):
+    def _load_task_from_file(self):
         """Load task from file into task_motions."""
         if not os.path.exists(self.task_path):
             print(f"Task file not found: {self.task_path}")
             return False
-        loaded_motions = []
+        loaded = []
         with open(self.task_path, "r") as f:
             for line in f:
-                loaded_motions.append(Motion[line.strip()])
-        if not loaded_motions:
+                parts = line.strip().split()
+                if len(parts) != 2:
+                    continue
+                m = Motion[parts[0]]
+                t = float(parts[1])
+                if t > 0:
+                    loaded.append((m, t))
+
+        if not loaded:
             print(f"Task file is empty or invalid: {self.task_path}")
             return False
-        self.task_motions = loaded_motions
-        print(f"Loaded {len(self.task_motions)} motions from {self.task_path}")
+        
+        self.task = loaded
+        total = sum(t for _, t in self.task)
+        print(f"Loaded {len(self.task)} segments ({total:.2f}s) from {self.task_path}")
         return True
     
-    def update_state_and_color(self):
-        if (not self.selected) and (not self.recording) and (not self.replaying):
-            self.state = State.SLEEP
-        else:
-            # if selected and not in special modes -> manual
-            if self.state == State.SLEEP:
-                self.state = State.MANUAL  # wake up
+    def _update_state_and_color(self):
+        """
+        If paused:
+        - REPLAY stays REPLAY (continue)
+        - RECORD stays RECORD (but frozen by control_step)
+        - MANUAL/SLEEP stays whatever set by set_pause()
+        """
+        if not self.paused:
+            # normal wake/sleep logic
+            if (not self.selected) and (not self.recording) and (not self.replaying):
+                self.state = State.SLEEP
+            else:
+                if self.state == State.SLEEP:
+                    self.state = State.MANUAL
 
         # colors
         if self.recording:
@@ -253,13 +363,13 @@ class DemoRobot:
         elif self.selected:
             color = [1.0, 1.0, 0.0, 1.0]  # yellow
         else:
-            # sleeping (or not selected)
             color = [0.2, 0.4, 0.8, 1.0]  # blue
 
         p.changeVisualShape(self.agv_id, -1, rgbaColor=color)
 
 
-    def build_robot(self,x,y,body_length,body_width,body_height,wheel_radius,wheel_width):
+
+    def _build_robot(self,x,y,body_length,body_width,body_height,wheel_radius,wheel_width):
         chassis_collision = p.createCollisionShape(p.GEOM_BOX, halfExtents=[body_length/2, body_width/2, body_height/2])
         chassis_visual = p.createVisualShape(p.GEOM_BOX, halfExtents=[body_length/2, body_width/2, body_height/2],
                                         rgbaColor=[0.2, 0.4, 0.8, 1.0])
@@ -290,11 +400,3 @@ class DemoRobot:
             linkJointAxis=[[0, 0, 1]] * 4 
         )
     
-    def set_selected(self, selected: bool):
-        """
-        If Robot is selected -> wake up and update color
-        """
-        self.selected = selected
-        if selected and self.state == State.SLEEP:
-            self.state = State.MANUAL
-        self.update_state_and_color()
