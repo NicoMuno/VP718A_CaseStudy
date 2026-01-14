@@ -232,7 +232,7 @@ class BaseWorld:
         self.camera_movement()
         p.stepSimulation()
                 
-        time.sleep(1./240.)  # 240 Hz
+        # time.sleep(1./240.)  # 240 Hz
 
     def end(self):
         p.disconnect(self.client)

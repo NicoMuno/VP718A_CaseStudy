@@ -336,8 +336,8 @@ class DemoRobot:
             # self._rec_run_time = 0.0
             self._rec_ticks = 0
             # store starting point
-            # self._record_start_pose = p.getBasePositionAndOrientation(self.agv_id)
-            # p.resetBaseVelocity(self.agv_id, [0,0,0], [0,0,0])
+            self._record_start_pose = p.getBasePositionAndOrientation(self.agv_id)
+            p.resetBaseVelocity(self.agv_id, [0,0,0], [0,0,0])
             print(f"[Robot:{self.robo_id}] RECORDING of task started.")
         
         # -- finished recording (save task)
@@ -357,7 +357,7 @@ class DemoRobot:
                 self._flush_record_run()
                 self._rec_last_motion = motion
                 # self._rec_run_time = self.control_dt
-                self._rec_tick = 1
+                self._rec_ticks = 1
 
         
         self._apply_motion(motion)
@@ -424,7 +424,7 @@ class DemoRobot:
         self.replaying = False
         self.human_detected = False
         self._replay_index = 0
-        self._replay_remaining = 0.0
+        # self._replay_remaining = 0.0
 
     def _set_dynamics(self,ld,ad,lf,rf,sf):
         # body damping

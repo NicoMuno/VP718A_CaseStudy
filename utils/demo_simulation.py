@@ -10,11 +10,15 @@ class Simulation:
     def __init__(self):
         self.running = False
 
+        self.tasks_simulation_running = False
+
         # indices
         self.robo_active_idx = 0
         self.human_active_idx = 0
 
         self.control_mode = ControlMode.CAMERA
+
+        self.robots = []
 
     # ------------------------
     # Initialization
@@ -60,6 +64,41 @@ class Simulation:
 
         self.running = True
         print("[Simulation] Initialized")
+
+    # ------------------------
+    # Task Management for Simulation
+    # ------------------------
+
+            #     if self.control_mode != ControlMode.ROBOTS:
+            #     self.enter_robot_mode()
+            # else:
+            #     self.robots[self.robo_active_idx].set_selected(False)
+            #     self.robo_active_idx = (self.robo_active_idx + 1) % len(self.robots)
+            #     self.robots[self.robo_active_idx].set_selected(True)
+            #     self.wld.set_follow_robot(self.robots[self.robo_active_idx].agv_id)
+
+    def start_task_simulation(self):
+        if self.control_mode != ControlMode.ROBOTS:
+            self.enter_robot_mode()
+        for rob in self.robots:
+            # rob.selected(True)
+            if not rob.replaying:
+                # starting replay stops recording
+                if rob.recording:
+                    rob.recording = False
+                rob.replaying = True
+            else:
+                rob.replaying = False
+
+        print("[Simulation] Tasks started: all robots replaying.")
+
+    def stop_task_simulation(self):
+        self.mission_running = False
+        for r in self.robots:
+            r.replaying = False
+            r.recording = False
+        print("[Simulation] Mission stopped.")
+
 
     # ------------------------
     # Main tick
@@ -135,6 +174,15 @@ class Simulation:
         # quit with SPACE
         if p.B3G_SPACE in keys and (keys[p.B3G_SPACE] & p.KEY_WAS_TRIGGERED):
             self.running = False
+            return
+        
+        # start task simulation with G
+        if ord('g') in keys and (keys[ord('g')] & p.KEY_WAS_TRIGGERED):
+            if not self.tasks_simulation_running:
+                self.enter_camera_mode()
+                self.start_task_simulation()
+            else:
+                self.stop_task_simulation()
             return
 
         # camera mode

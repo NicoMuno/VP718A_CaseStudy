@@ -40,6 +40,8 @@ python main.py
 | CAMERA    | C   | use the camera to move around in simulation | 
 | ROBOT     | R   | cycle through Robots |
 | HUMAN     | H   | cycle through Humans |
+| Exit| SPACE | Exit the Program |
+|Simulation| G | Replays all Robot Tasks |
 
 *Note - When switchen from ROBOT to HUMAN/CAMERA:*
 - Replay keeps going
