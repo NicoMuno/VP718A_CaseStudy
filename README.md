@@ -86,3 +86,34 @@ python main.py
 |Selected (manual) | Yellow       |
 |Sleeping / Not selected | Blue   |
 | Human detected (only in replay mode)| Purple |
+
+## Examples
+
+## Warehouse
+
+![warehouse](./doc/img/warehouse_0.png)
+
+## Task Simulation Video
+
+![Task Simulation](./doc/vid/warehouse_task_sim.mp4)
+
+## Robot Colors
+
+**Sleep**
+![sleep](./doc/img/rob_sleep.png)
+
+**Selected**
+![selected](./doc/img/rob_selected.png)
+
+**Recording**
+![recording](./doc/img/rob_rec.png)
+
+**Replaying**
+![replaying](./doc/img/rob_replay.png)
+
+**Human Detected during Task Replay**
+![detected](./doc/img/rob_detect.png)
+
+## Notes
+
+- Replay is currently not accurate
