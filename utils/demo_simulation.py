@@ -69,19 +69,10 @@ class Simulation:
     # Task Management for Simulation
     # ------------------------
 
-            #     if self.control_mode != ControlMode.ROBOTS:
-            #     self.enter_robot_mode()
-            # else:
-            #     self.robots[self.robo_active_idx].set_selected(False)
-            #     self.robo_active_idx = (self.robo_active_idx + 1) % len(self.robots)
-            #     self.robots[self.robo_active_idx].set_selected(True)
-            #     self.wld.set_follow_robot(self.robots[self.robo_active_idx].agv_id)
-
     def start_task_simulation(self):
         if self.control_mode != ControlMode.ROBOTS:
             self.enter_robot_mode()
         for rob in self.robots:
-            # rob.selected(True)
             if not rob.replaying:
                 # starting replay stops recording
                 if rob.recording:
@@ -226,7 +217,7 @@ class Simulation:
             # forward keys to selected robot for WASD
             rob.set_user_keys(keys)
 
-            # toggle RECORD (1) - mutual exclusion with replay
+            # toggle RECORD (1)
             if ord('1') in keys and (keys[ord('1')] & p.KEY_WAS_TRIGGERED):
                 if not rob.recording:
                     # starting recording stops replay
@@ -236,7 +227,7 @@ class Simulation:
                 else:
                     rob.recording = False
 
-            # toggle REPLAY (2) - mutual exclusion with record
+            # toggle REPLAY (2)
             if ord('2') in keys and (keys[ord('2')] & p.KEY_WAS_TRIGGERED):
                 if not rob.replaying:
                     # starting replay stops recording
@@ -246,7 +237,6 @@ class Simulation:
                 else:
                     rob.replaying = False
 
-            # make sure humans don't keep keys
             for h in self.people:
                 h.set_user_keys({})
 

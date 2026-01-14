@@ -63,10 +63,8 @@ class DemoRobot:
         self.replaying = False # in main key -> 2
 
         # RECORD
-        # self._rec_run_time = 0.0
         self._rec_last_motion = Motion.STOP
         self._rec_ticks = 0
-
         self._record_start_pose = None
 
     def set_human_ids(self, human_ids):
@@ -281,7 +279,6 @@ class DemoRobot:
                 self.state = State.REPLAY
                 self._replay_index = 0
                 motion, self._replay_ticks_remaining = self.task[0]
-                # motion,self._replay_remaining = self.task[0]
             
                 print(f"[Robot:{self.robo_id}] Starting Task.")
             else:
@@ -295,15 +292,8 @@ class DemoRobot:
                 motion = Motion.STOP
             else:
                 motion, _ = self.task[self._replay_index]
-                # self._replay_remaining -= self.control_dt
                 self._replay_ticks_remaining -= 1
 
-                # if self._replay_remaining <= 0.0:
-                #     self._replay_index += 1
-                #     if self._replay_index < len(self.task):
-                #         _, self._replay_remaining = self.task[self._replay_index]
-                #     else:
-                #         self._finish_replay()
                 if self._replay_ticks_remaining <= 0:
                     self._replay_index += 1
                     if self._replay_index < len(self.task):
@@ -333,7 +323,7 @@ class DemoRobot:
             self.state = State.RECORD
             self.task = []
             self._rec_last_motion = Motion.STOP
-            # self._rec_run_time = 0.0
+            
             self._rec_ticks = 0
             # store starting point
             self._record_start_pose = p.getBasePositionAndOrientation(self.agv_id)
@@ -351,12 +341,10 @@ class DemoRobot:
         # -- save recording step
         if self.state == State.RECORD and self.recording and (not self.paused):
             if motion == self._rec_last_motion:
-                # self._rec_run_time += self.control_dt
                 self._rec_ticks += 1
             else:
                 self._flush_record_run()
                 self._rec_last_motion = motion
-                # self._rec_run_time = self.control_dt
                 self._rec_ticks = 1
 
         
@@ -403,15 +391,13 @@ class DemoRobot:
             # self._set_dynamics(0.15,0.2,2,0.1,0.01)
         elif new_mode == ActionMode.TURN:
             print("TURN DYNAMICS SET\n")
-            self._set_dynamics(ld=0.1,ad=0.5,lf=0.8,rf=0,sf=0.001) #_set_dynamics(ld=0.1,ad=0.3,lf=0.8,rf=0,sf=0)
+            self._set_dynamics(ld=0.1,ad=0.5,lf=0.8,rf=0,sf=0.001) 
+            #self._set_dynamics(ld=0.1,ad=0.3,lf=0.8,rf=0,sf=0)
         else:
             print(f"ACTION MODE is {new_mode.name} - NOTHING CHANGED!")
             
 
     def _flush_record_run(self):
-        # if self._rec_run_time > 0.0:
-        #     self.task.append((self._rec_last_motion, self._rec_run_time))
-        #     self._rec_run_time = 0.0
         if self._rec_ticks > 0:
             self.task.append((self._rec_last_motion, self._rec_ticks))
             self._rec_ticks = 0
@@ -424,7 +410,7 @@ class DemoRobot:
         self.replaying = False
         self.human_detected = False
         self._replay_index = 0
-        # self._replay_remaining = 0.0
+        
 
     def _set_dynamics(self,ld,ad,lf,rf,sf):
         # body damping
@@ -455,10 +441,7 @@ class DemoRobot:
         if not self.task:
             print("Nothing to save. Task recording is empty!")
             return
-        # with open(self.task_path, "w") as f:
-        #     for motion, dur in self.task:
-        #         f.write(f"{motion.name} {dur:.3f}\n")
-        # print(f"Saved {len(self.task)} segments to {self.task_path}")
+
         with open(self.task_path, "w") as f:
             
             # start pose
@@ -479,16 +462,6 @@ class DemoRobot:
             return False
         loaded = []
         start_pose = None
-
-        # with open(self.task_path, "r") as f:
-        #     for line in f:
-        #         parts = line.strip().split()
-        #         if len(parts) != 2:
-        #             continue
-        #         m = Motion[parts[0]]
-        #         t = float(parts[1])
-        #         if t > 0:
-        #             loaded.append((m, t))
 
         with open(self.task_path, "r") as f:
             for line in f:
@@ -519,10 +492,6 @@ class DemoRobot:
         total_ticks = sum(t for _, t in self.task)
         print(f"Loaded {len(self.task)} segments ({total_ticks} ticks, {total_ticks*self.control_dt:.2f}s) from {self.task_path}")
         return True
-        # self.task = loaded
-        # total = sum(t for _, t in self.task)
-        # print(f"Loaded {len(self.task)} segments ({total:.2f}s) from {self.task_path}")
-        # return True
     
     def _update_state_and_color(self):
         """
