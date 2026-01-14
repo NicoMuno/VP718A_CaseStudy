@@ -73,6 +73,7 @@ python main.py
 | 1         | Record Task  |
 | 2         | Do Task      |
 | F         | Toggle camera follow mode (follows selected robot)|
+| L         | Show LIDAR debug lines (only in replay mode)      |
 
 
 **Color Coding of Robot:**
@@ -81,4 +82,5 @@ python main.py
 |Recording         | Red          |
 |Replaying         | Green        |
 |Selected (manual) | Yellow       |
-|Sleeping / Not selected | Blue |
+|Sleeping / Not selected | Blue   |
+| Human detected (only in replay mode)| Purple |
